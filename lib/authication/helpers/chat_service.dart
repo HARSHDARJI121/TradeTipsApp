@@ -9,7 +9,7 @@ class ChatService {
   static String getChatCollection(String groupName) {
     if (groupName == 'Admin Chat') {
       final user = _auth.currentUser;
-      return 'admin_chats/${user?.uid}';
+      return 'admin_chats/${user?.uid}/messages';
     }
     return 'group_chats/$groupName';
   }
@@ -32,8 +32,10 @@ class ChatService {
       final userName = userData?['name'] ?? 'User';
 
       // Create message document with unique ID
-      final messageRef = _firestore.collection(getChatCollection(groupName)).doc();
-      
+      final messageRef = _firestore
+          .collection(getChatCollection(groupName))
+          .doc();
+
       final messageData = {
         'text': text.trim(),
         'senderId': user.uid,
@@ -55,7 +57,6 @@ class ChatService {
           // Ignore errors for status updates
         }
       });
-
     } catch (e) {
       throw Exception('Failed to send message: $e');
     }
@@ -95,10 +96,10 @@ class ChatService {
   static Future<bool> isUserMember(String groupName) async {
     final user = _auth.currentUser;
     if (user == null) return false;
-    
+
     // Admin chat is always accessible
     if (groupName == 'Admin Chat') return true;
-    
+
     final doc = await _firestore
         .collection('groups')
         .doc(groupName)
@@ -111,7 +112,7 @@ class ChatService {
   // Get group members count
   static Future<int> getGroupMembersCount(String groupName) async {
     if (groupName == 'Admin Chat') return 1; // Individual chat
-    
+
     final snapshot = await _firestore
         .collection('groups')
         .doc(groupName)
@@ -128,7 +129,7 @@ class ChatService {
           .orderBy('timestamp', descending: true)
           .limit(1)
           .get();
-      
+
       if (snapshot.docs.isNotEmpty) {
         return snapshot.docs.first.data();
       }
@@ -154,7 +155,7 @@ class ChatService {
   static Stream<DocumentSnapshot> getTypingStatusStream(String groupName) {
     final user = _auth.currentUser;
     if (user == null) return Stream.empty();
-    
+
     return _firestore
         .collection('typing_status')
         .doc('${groupName}_${user.uid}')
@@ -162,7 +163,10 @@ class ChatService {
   }
 
   // Update typing status
-  static Future<void> updateTypingStatus(String groupName, bool isTyping) async {
+  static Future<void> updateTypingStatus(
+    String groupName,
+    bool isTyping,
+  ) async {
     final user = _auth.currentUser;
     if (user == null) return;
 
@@ -171,10 +175,10 @@ class ChatService {
           .collection('typing_status')
           .doc('${groupName}_${user.uid}')
           .set({
-        'isTyping': isTyping,
-        'userId': user.uid,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
+            'isTyping': isTyping,
+            'userId': user.uid,
+            'timestamp': FieldValue.serverTimestamp(),
+          });
     } catch (e) {
       // Ignore typing status errors
     }
@@ -191,7 +195,7 @@ class ChatService {
           .where('senderId', isNotEqualTo: user.uid)
           .where('status', whereIn: ['sent', 'delivered'])
           .get();
-      
+
       return snapshot.docs.length;
     } catch (e) {
       return 0;
@@ -204,12 +208,15 @@ class ChatService {
     required String text,
   }) async {
     try {
-      final adminDoc = await _firestore.collection('users').doc(_auth.currentUser?.uid).get();
+      final adminDoc = await _firestore
+          .collection('users')
+          .doc(_auth.currentUser?.uid)
+          .get();
       final adminData = adminDoc.data();
       final adminName = adminData?['name'] ?? 'Admin';
 
       final messageRef = _firestore.collection('admin_chats/$userId').doc();
-      
+
       await messageRef.set({
         'text': text.trim(),
         'senderId': _auth.currentUser?.uid,
@@ -229,9 +236,8 @@ class ChatService {
           // Ignore errors
         }
       });
-
     } catch (e) {
       throw Exception('Failed to send admin message: $e');
     }
   }
-} 
+}

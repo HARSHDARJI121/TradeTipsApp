@@ -87,7 +87,8 @@ class DashboardPage extends StatelessWidget {
                   leading: const Icon(Icons.logout, color: Colors.red),
                   title: const Text("Logout"),
                   onTap: () async {
-                    await AuthService.logout();
+                    final _authService = AuthService();
+                    await _authService.logout();
                     Navigator.of(context).pushAndRemoveUntil(
                       MaterialPageRoute(
                         builder: (context) => const SignInPage(),

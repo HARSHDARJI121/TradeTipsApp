@@ -28,7 +28,11 @@ class RequestListPage extends StatelessWidget {
     }
   }
 
-  Future<void> removeUserFromGroupAndPlan(String userId, String groupName) async {
+  Future<void> removeUserFromGroupAndPlan(
+    String userId,
+    String groupName,
+    String planName,
+  ) async {
     final groupDoc = getGroupDocName(groupName);
 
     await FirebaseFirestore.instance
@@ -41,7 +45,7 @@ class RequestListPage extends StatelessWidget {
     final plans = await FirebaseFirestore.instance
         .collection('plans')
         .where('userId', isEqualTo: userId)
-        .where('planName', isEqualTo: groupName)
+        .where('planName', isEqualTo: planName)
         .where('status', isEqualTo: 'active')
         .get();
 
@@ -109,7 +113,10 @@ class RequestListPage extends StatelessWidget {
       body: Column(
         children: [
           const SizedBox(height: 12),
-          const Text('Pending Requests', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          const Text(
+            'Pending Requests',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          ),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
@@ -118,7 +125,9 @@ class RequestListPage extends StatelessWidget {
                   .where('status', isEqualTo: 'pending')
                   .snapshots(),
               builder: (context, snapshot) {
-                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
                 final docs = snapshot.data!.docs;
 
                 if (docs.isEmpty) {
@@ -131,29 +140,50 @@ class RequestListPage extends StatelessWidget {
                     final data = doc.data() as Map<String, dynamic>;
                     return Card(
                       elevation: 4,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                       child: ListTile(
-                        leading: CircleAvatar(child: Icon(Icons.person, color: Colors.white), backgroundColor: color),
+                        leading: CircleAvatar(
+                          backgroundColor: color,
+                          child: Icon(Icons.person, color: Colors.white),
+                        ),
                         title: Text(data['userName'] ?? 'User'),
                         subtitle: Text(data['userEmail'] ?? ''),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
-                              icon: Icon(Icons.check, color: Colors.green, size: 28),
+                              icon: Icon(
+                                Icons.check,
+                                color: Colors.green,
+                                size: 28,
+                              ),
                               onPressed: () async {
                                 await approveRequest(doc);
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('User approved and added to group.'), backgroundColor: Colors.green),
+                                  const SnackBar(
+                                    content: Text(
+                                      'User approved and added to group.',
+                                    ),
+                                    backgroundColor: Colors.green,
+                                  ),
                                 );
                               },
                             ),
                             IconButton(
-                              icon: Icon(Icons.close, color: Colors.red, size: 28),
+                              icon: Icon(
+                                Icons.close,
+                                color: Colors.red,
+                                size: 28,
+                              ),
                               onPressed: () async {
                                 await doc.reference.delete();
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Request rejected.'), backgroundColor: Colors.red),
+                                  const SnackBar(
+                                    content: Text('Request rejected.'),
+                                    backgroundColor: Colors.red,
+                                  ),
                                 );
                               },
                             ),
@@ -167,7 +197,10 @@ class RequestListPage extends StatelessWidget {
             ),
           ),
           const Divider(),
-          const Text('All Approved Users', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          const Text(
+            'All Approved Users',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          ),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
@@ -176,7 +209,9 @@ class RequestListPage extends StatelessWidget {
                   .where('status', isEqualTo: 'approved')
                   .snapshots(),
               builder: (context, snapshot) {
-                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
                 final docs = snapshot.data!.docs;
 
                 if (docs.isEmpty) {
@@ -189,9 +224,13 @@ class RequestListPage extends StatelessWidget {
                     final data = doc.data() as Map<String, dynamic>;
                     return Card(
                       elevation: 4,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                       child: ListTile(
-                        leading: CircleAvatar(child: Icon(Icons.verified_user, color: Colors.blue)),
+                        leading: CircleAvatar(
+                          child: Icon(Icons.verified_user, color: Colors.blue),
+                        ),
                         title: Text(data['userName'] ?? 'User'),
                         subtitle: Text(data['userEmail'] ?? ''),
                         trailing: IconButton(
@@ -201,19 +240,37 @@ class RequestListPage extends StatelessWidget {
                               context: context,
                               builder: (ctx) => AlertDialog(
                                 title: const Text('Remove User'),
-                                content: const Text('Are you sure you want to remove this user from the group?'),
+                                content: const Text(
+                                  'Are you sure you want to remove this user from the group?',
+                                ),
                                 actions: [
-                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                                  TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove', style: TextStyle(color: Colors.red))),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    child: const Text(
+                                      'Remove',
+                                      style: TextStyle(color: Colors.red),
+                                    ),
+                                  ),
                                 ],
                               ),
                             );
 
                             if (confirm == true) {
-                              await removeUserFromGroupAndPlan(data['userId'], groupName);
+                              await removeUserFromGroupAndPlan(
+                                data['userId'],
+                                groupName,
+                                data['planName'] ?? data['type'],
+                              );
                               await doc.reference.delete();
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('User removed from group.'), backgroundColor: Colors.red),
+                                const SnackBar(
+                                  content: Text('User removed from group.'),
+                                  backgroundColor: Colors.red,
+                                ),
                               );
                             }
                           },

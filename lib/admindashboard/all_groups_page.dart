@@ -182,13 +182,16 @@ class AllGroupsPage extends StatelessWidget {
             const SizedBox(height: 8),
             const Divider(thickness: 1.2),
             const SizedBox(height: 12),
-            // User chat cards
+
+            // ✅ FIXED: User chat list logic
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('groups')
                     .doc('admin_chat')
                     .collection('messages')
+                    .where('private', isEqualTo: true)
+                    .where('participants', arrayContains: 'admin')
                     .orderBy('timestamp', descending: true)
                     .snapshots(),
                 builder: (context, snapshot) {
@@ -196,30 +199,40 @@ class AllGroupsPage extends StatelessWidget {
                     return const Center(child: CircularProgressIndicator());
                   }
                   final docs = snapshot.data!.docs;
-                  // Get unique users (exclude admin messages)
+
+                  // Use a map to store unique user info
                   final Map<String, Map<String, String>> users = {};
                   for (final doc in docs) {
                     final data = doc.data() as Map<String, dynamic>;
-                    final senderId = data['senderId'] ?? '';
-                    final senderName = data['senderName'] ?? 'User';
-                    final senderEmail = data['senderEmail'] ?? '';
-                    final recipientId = data['recipientId'] ?? '';
-                    // Only include users (not admin) who sent to admin
-                    if (recipientId == 'admin' && senderId != 'admin') {
-                      users[senderId] = {
-                        'name': senderName,
-                        'email': senderEmail,
-                      };
-                    }
+
+                    // Identify the user (not admin) from participants
+                    final participants = List<String>.from(data['participants'] ?? []);
+                    final otherUserId = participants.firstWhere(
+                      (id) => id != 'admin',
+                      orElse: () => '',
+                    );
+
+                    if (otherUserId.isEmpty) continue;
+
+                    // Get name/email depending on who sent the message
+                    final isAdminSender = data['senderId'] == 'admin';
+                    final userName = isAdminSender ? data['recipientName'] : data['senderName'];
+                    final userEmail = isAdminSender ? data['recipientEmail'] : data['senderEmail'];
+
+                    users[otherUserId] = {
+                      'name': userName ?? 'User',
+                      'email': userEmail ?? '',
+                    };
                   }
+
                   if (users.isEmpty) {
                     return const Center(child: Text('No user messages yet.'));
                   }
+
                   final userList = users.entries.toList();
                   return ListView.separated(
                     itemCount: userList.length,
-                    separatorBuilder: (context, i) =>
-                        const SizedBox(height: 16),
+                    separatorBuilder: (context, i) => const SizedBox(height: 16),
                     itemBuilder: (context, index) {
                       final userId = userList[index].key;
                       final user = userList[index].value;

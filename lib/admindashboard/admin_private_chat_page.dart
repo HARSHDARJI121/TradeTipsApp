@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart'; // For timestamp formatting
 
 class AdminPrivateChatPage extends StatefulWidget {
   final String userId;
   final String userName;
   final String userEmail;
+
   const AdminPrivateChatPage({
     super.key,
     required this.userId,
@@ -18,37 +20,38 @@ class AdminPrivateChatPage extends StatefulWidget {
 
 class _AdminPrivateChatPageState extends State<AdminPrivateChatPage> {
   final TextEditingController _controller = TextEditingController();
+  final String adminId = 'admin';
 
-  String get adminId =>
-      'admin'; // Use a special value or the admin's UID if available
-
+  // Get messages involving both admin and user
   Stream<QuerySnapshot> get _chatStream => FirebaseFirestore.instance
       .collection('groups')
       .doc('admin_chat')
       .collection('messages')
       .where('private', isEqualTo: true)
-      .where('participants', arrayContains: widget.userId)
+      .where('participants', arrayContains: adminId)
       .orderBy('timestamp', descending: false)
       .snapshots();
 
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
+
     await FirebaseFirestore.instance
         .collection('groups')
         .doc('admin_chat')
         .collection('messages')
         .add({
-          'text': text.trim(),
-          'senderId': adminId,
-          'senderName': 'Admin',
-          'senderEmail': '',
-          'recipientId': widget.userId,
-          'recipientName': widget.userName,
-          'recipientEmail': widget.userEmail,
-          'timestamp': FieldValue.serverTimestamp(),
-          'private': true,
-          'participants': [adminId, widget.userId],
-        });
+      'text': text.trim(),
+      'senderId': adminId,
+      'senderName': 'Admin',
+      'senderEmail': '',
+      'recipientId': widget.userId,
+      'recipientName': widget.userName,
+      'recipientEmail': widget.userEmail,
+      'timestamp': FieldValue.serverTimestamp(),
+      'private': true,
+      'participants': [adminId, widget.userId],
+    });
+
     _controller.clear();
   }
 
@@ -58,7 +61,10 @@ class _AdminPrivateChatPageState extends State<AdminPrivateChatPage> {
         .doc('admin_chat')
         .collection('messages')
         .doc(messageId)
-        .update({'text': newText, 'edited': true});
+        .update({
+      'text': newText,
+      'edited': true,
+    });
   }
 
   Future<void> _deleteMessage(String messageId) async {
@@ -101,6 +107,12 @@ class _AdminPrivateChatPageState extends State<AdminPrivateChatPage> {
     );
   }
 
+  String _formatTimestamp(Timestamp? timestamp) {
+    if (timestamp == null) return '';
+    final dt = timestamp.toDate();
+    return DateFormat('hh:mm a').format(dt);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -130,15 +142,19 @@ class _AdminPrivateChatPageState extends State<AdminPrivateChatPage> {
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                final messages = snapshot.data!.docs;
+
+                final messages = snapshot.data!.docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final participants = List<String>.from(data['participants'] ?? []);
+                  return participants.contains(widget.userId);
+                }).toList();
+
                 if (messages.isEmpty) {
                   return const Center(child: Text('No messages yet.'));
                 }
+
                 return ListView.builder(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 16,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final msg = messages[index];
@@ -148,38 +164,31 @@ class _AdminPrivateChatPageState extends State<AdminPrivateChatPage> {
                     final text = data['text'] ?? '';
                     final messageId = msg.id;
                     final edited = data['edited'] == true;
+                    final timestamp = data['timestamp'] as Timestamp?;
+
                     return Align(
-                      alignment: isMe
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft,
+                      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
                       child: GestureDetector(
-                        onLongPress: () async {
-                          final action = await showMenu<String>(
-                            context: context,
-                            position: RelativeRect.fromLTRB(200, 200, 100, 100),
-                            items: [
-                              const PopupMenuItem(
-                                value: 'edit',
-                                child: Text('Edit'),
-                              ),
-                              const PopupMenuItem(
-                                value: 'delete',
-                                child: Text('Delete'),
-                              ),
-                            ],
-                          );
-                          if (action == 'edit') {
-                            _showEditDialog(messageId, text);
-                          } else if (action == 'delete') {
-                            await _deleteMessage(messageId);
-                          }
-                        },
+                        onLongPress: isMe
+                            ? () async {
+                                final action = await showMenu<String>(
+                                  context: context,
+                                  position: RelativeRect.fromLTRB(200, 200, 100, 100),
+                                  items: [
+                                    const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                                    const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                                  ],
+                                );
+                                if (action == 'edit') {
+                                  _showEditDialog(messageId, text);
+                                } else if (action == 'delete') {
+                                  await _deleteMessage(messageId);
+                                }
+                              }
+                            : null,
                         child: Container(
                           margin: const EdgeInsets.symmetric(vertical: 4),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                           decoration: BoxDecoration(
                             color: isMe ? Colors.orange[100] : Colors.white,
                             borderRadius: BorderRadius.circular(16),
@@ -194,15 +203,26 @@ class _AdminPrivateChatPageState extends State<AdminPrivateChatPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                senderName,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: isMe
-                                      ? Colors.orange
-                                      : Colors.deepPurple,
-                                  fontSize: 13,
-                                ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    senderName,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: isMe ? Colors.orange : Colors.deepPurple,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    _formatTimestamp(timestamp),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 2),
                               Text(text, style: const TextStyle(fontSize: 16)),

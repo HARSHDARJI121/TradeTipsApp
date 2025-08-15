@@ -67,6 +67,23 @@ class _MessagesPageState extends State<MessagesPage> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _checkAuthenticationStatus();
+  }
+
+  void _checkAuthenticationStatus() {
+    final user = FirebaseAuth.instance.currentUser;
+    print(
+      'Authentication status: ${user != null ? 'Authenticated' : 'Not authenticated'}',
+    );
+    if (user != null) {
+      print('User ID: ${user.uid}');
+      print('User Email: ${user.email}');
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8FB),
@@ -321,56 +338,80 @@ class _GroupChatPageState extends State<GroupChatPage> {
 
   Future<void> _sendMessage({String? text, String? imageUrl}) async {
     if ((text == null || text.trim().isEmpty) && imageUrl == null) return;
+
     final user = currentUser;
-    if (user == null) return;
-    final userName = await _getCurrentUserName();
-    final userEmail = user.email ?? '';
-    final isAdminChat = widget.groupName == 'Admin Chat';
-    final adminId = 'admin'; // Or use the actual admin UID if you have it
-
-    final messageData = {
-      'text': text ?? '',
-      'senderId': user.uid,
-      'senderName': userName,
-      'senderEmail': userEmail,
-      'type': imageUrl != null ? 'image' : 'text',
-      'imageUrl': imageUrl,
-      'timestamp': FieldValue.serverTimestamp(),
-    };
-
-    if (isAdminChat) {
-      messageData.addAll({
-        'recipientId': adminId,
-        'private': true,
-        'participants': [adminId, user.uid],
-      });
+    if (user == null) {
+      print('User not authenticated');
+      return;
     }
 
-    await FirebaseFirestore.instance
-        .collection('groups')
-        .doc(groupId)
-        .collection('messages')
-        .add(messageData);
-
-    _controller.clear();
+    try {
+      final userName = await _getCurrentUserName();
+      final userEmail = user.email ?? '';
+      final isAdminChat = widget.groupName == 'Admin Chat';
+      final adminId = 'admin';
+      final messageData = {
+        'text': text?.trim() ?? '',
+        'senderId': isAdminChat ? user.uid : user.uid,
+        'senderName': userName,
+        'senderEmail': userEmail,
+        'timestamp': FieldValue.serverTimestamp(),
+        'private': isAdminChat,
+        'participants': isAdminChat ? [adminId, user.uid] : null,
+        'imageUrl': imageUrl,
+      }..removeWhere((k, v) => v == null);
+      if (isAdminChat) {
+        await FirebaseFirestore.instance
+            .collection('admin_chats')
+            .doc(user.uid)
+            .collection('messages')
+            .add(messageData);
+      } else {
+        await FirebaseFirestore.instance
+            .collection('groups')
+            .doc(groupId)
+            .collection('messages')
+            .add(messageData);
+      }
+    } catch (e) {
+      print('Failed to send message: $e');
+    }
   }
 
   Future<void> _editMessage(String messageId, String newText) async {
-    await FirebaseFirestore.instance
-        .collection('groups')
-        .doc(groupId)
-        .collection('messages')
-        .doc(messageId)
-        .update({'text': newText, 'edited': true});
+    if (widget.groupName == 'Admin Chat') {
+      await FirebaseFirestore.instance
+          .collection('admin_chats')
+          .doc(currentUser?.uid)
+          .collection('messages')
+          .doc(messageId)
+          .update({'text': newText, 'edited': true});
+    } else {
+      await FirebaseFirestore.instance
+          .collection('groups')
+          .doc(groupId)
+          .collection('messages')
+          .doc(messageId)
+          .update({'text': newText, 'edited': true});
+    }
   }
 
   Future<void> _deleteMessage(String messageId) async {
-    await FirebaseFirestore.instance
-        .collection('groups')
-        .doc(groupId)
-        .collection('messages')
-        .doc(messageId)
-        .delete();
+    if (widget.groupName == 'Admin Chat') {
+      await FirebaseFirestore.instance
+          .collection('admin_chats')
+          .doc(currentUser?.uid)
+          .collection('messages')
+          .doc(messageId)
+          .delete();
+    } else {
+      await FirebaseFirestore.instance
+          .collection('groups')
+          .doc(groupId)
+          .collection('messages')
+          .doc(messageId)
+          .delete();
+    }
   }
 
   void _showMessageOptions(
@@ -598,14 +639,9 @@ class _GroupChatPageState extends State<GroupChatPage> {
                 child: StreamBuilder<QuerySnapshot>(
                   stream: widget.groupName == 'Admin Chat'
                       ? FirebaseFirestore.instance
-                            .collection('groups')
-                            .doc('admin_chat')
+                            .collection('admin_chats')
+                            .doc(currentUser?.uid)
                             .collection('messages')
-                            .where('private', isEqualTo: true)
-                            .where(
-                              'participants',
-                              arrayContains: currentUser?.uid,
-                            )
                             .orderBy('timestamp', descending: false)
                             .snapshots()
                       : FirebaseFirestore.instance

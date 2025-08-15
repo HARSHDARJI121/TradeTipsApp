@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'user_plans_page.dart';
 
 class AllUsersPage extends StatefulWidget {
   const AllUsersPage({super.key});
@@ -9,70 +10,148 @@ class AllUsersPage extends StatefulWidget {
 }
 
 class _AllUsersPageState extends State<AllUsersPage> {
-  String _search = '';
+  String searchText = '';
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('All Users')),
+      appBar: AppBar(
+        title: const Text('All Users'),
+        backgroundColor: Colors.deepPurple,
+        elevation: 0,
+      ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
+          // Search Bar
+          Container(
+            margin: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(30),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.deepPurple.withOpacity(0.1),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
             child: TextField(
               decoration: InputDecoration(
-                hintText: 'Search by name or email',
-                prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                filled: true,
-                fillColor: Colors.grey[100],
+                hintText: 'Search users by name or ID...',
+                prefixIcon: const Icon(Icons.search, color: Colors.deepPurple),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 16),
               ),
-              onChanged: (value) => setState(() => _search = value.trim().toLowerCase()),
+              onChanged: (value) {
+                setState(() {
+                  searchText = value.trim().toLowerCase();
+                });
+              },
             ),
           ),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance.collection('users').snapshots(),
               builder: (context, snapshot) {
-                if (!snapshot.hasData) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                final users = snapshot.data!.docs.where((doc) {
-                  final name = (doc['name'] ?? '').toString().toLowerCase();
-                  final email = (doc['email'] ?? '').toString().toLowerCase();
-                  return name.contains(_search) || email.contains(_search);
+                final docs = snapshot.data?.docs ?? [];
+                // Filter users by search text
+                final filteredDocs = docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final name = (data['name'] ?? '').toString().toLowerCase();
+                  final id = doc.id.toLowerCase();
+                  return name.contains(searchText) || id.contains(searchText);
                 }).toList();
-                if (users.isEmpty) {
-                  return const Center(child: Text('No users found.'));
+
+                if (filteredDocs.isEmpty) {
+                  return const Center(child: Text('No users found.', style: TextStyle(fontSize: 18)));
                 }
-                return ListView.separated(
-                  itemCount: users.length,
-                  separatorBuilder: (context, i) => const Divider(height: 1),
+
+                return ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  itemCount: filteredDocs.length,
                   itemBuilder: (context, index) {
-                    final user = users[index];
-                    final data = user.data() as Map<String, dynamic>;
-                    final provider = (data['provider'] ?? '').toString();
-                    IconData providerIcon;
-                    Color providerColor;
-                    if (provider.contains('google')) {
-                      providerIcon = Icons.account_circle;
-                      providerColor = Colors.redAccent;
-                    } else if (provider.contains('password') || provider.contains('email')) {
-                      providerIcon = Icons.email;
-                      providerColor = Colors.blueAccent;
-                    } else {
-                      providerIcon = Icons.person;
-                      providerColor = Colors.grey;
-                    }
-                    return ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: providerColor.withOpacity(0.15),
-                        child: Icon(providerIcon, color: providerColor),
+                    final data = filteredDocs[index].data() as Map<String, dynamic>;
+                    final userId = filteredDocs[index].id;
+                    final userName = data['name'] ?? 'No Name';
+                    final email = data['email'] ?? '';
+                    final photoUrl = data['photoUrl'] ?? null;
+
+                    return GestureDetector(
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => UserPlansPage(
+                              userId: userId,
+                              userName: userName,
+                            ),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.deepPurple, Colors.purpleAccent],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.deepPurple.withOpacity(0.15),
+                              blurRadius: 12,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
+                        ),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          leading: CircleAvatar(
+                            radius: 28,
+                            backgroundColor: Colors.white,
+                            backgroundImage: photoUrl != null && photoUrl != ''
+                                ? NetworkImage(photoUrl)
+                                : null,
+                            child: (photoUrl == null || photoUrl == '')
+                                ? Text(
+                                    userName.isNotEmpty ? userName[0].toUpperCase() : '?',
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      color: Colors.deepPurple,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  )
+                                : null,
+                          ),
+                          title: Text(
+                            userName,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 20,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                email,
+                                style: const TextStyle(color: Colors.white70, fontSize: 14),
+                              ),
+                              Text(
+                                userId,
+                                style: const TextStyle(color: Colors.white38, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                          trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white),
+                        ),
                       ),
-                      title: Text(data['name'] ?? 'No Name', style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text(data['email'] ?? 'No Email'),
                     );
                   },
                 );
@@ -81,6 +160,7 @@ class _AllUsersPageState extends State<AllUsersPage> {
           ),
         ],
       ),
+      backgroundColor: Colors.grey[100],
     );
   }
-} 
+}

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 
 import '../userdashboard/dashboard_page.dart';
 import '../admindashboard/admin_dashboard.dart';
 import 'sign_up.dart';
+import 'helpers/auth_service.dart'; // adjust the path as needed
 
 class SignInPage extends StatefulWidget {
   const SignInPage({super.key});
@@ -69,11 +69,18 @@ class _SignInPageState extends State<SignInPage> {
       _error = null;
     });
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
+      final authService = AuthService();
+      final user = await authService.signInWithEmail(
+        _emailController.text.trim(),
+        _passwordController.text.trim(),
       );
-      await _handlePostSignIn(context);
+      if (user != null) {
+        await _handlePostSignIn(context);
+      } else {
+        setState(() {
+          _error = "Sign-in failed. Please check your credentials.";
+        });
+      }
     } on FirebaseAuthException catch (e) {
       setState(() {
         _error = e.message;
@@ -90,25 +97,22 @@ class _SignInPageState extends State<SignInPage> {
       _isLoading = true;
       _error = null;
     });
+
     try {
-      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null) {
+      final authService = AuthService();
+      final user = await authService.signInWithGoogle();
+
+      if (user != null) {
+        await _handlePostSignIn(context);
+      } else {
+        // Sign-in was cancelled or failed
         setState(() {
-          _error = "Google sign-in cancelled.";
+          _error = "Google sign-in was cancelled or failed.";
         });
-        return;
       }
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-      await FirebaseAuth.instance.signInWithCredential(credential);
-      await _handlePostSignIn(context);
-    } on FirebaseAuthException catch (e) {
+    } catch (e) {
       setState(() {
-        _error = e.message;
+        _error = "An unexpected error occurred: ${e.toString()}";
       });
     } finally {
       setState(() {
@@ -116,6 +120,7 @@ class _SignInPageState extends State<SignInPage> {
       });
     }
   }
+
 
   void _showForgotPasswordDialog() {
     final TextEditingController emailController = TextEditingController();
@@ -128,9 +133,7 @@ class _SignInPageState extends State<SignInPage> {
           content: TextField(
             controller: emailController,
             keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              hintText: 'Enter your email',
-            ),
+            decoration: const InputDecoration(hintText: 'Enter your email'),
           ),
           actions: [
             TextButton(
@@ -143,14 +146,14 @@ class _SignInPageState extends State<SignInPage> {
                 Navigator.pop(context);
                 if (email.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please enter an email.'),
-                    ),
+                    const SnackBar(content: Text('Please enter an email.')),
                   );
                   return;
                 }
                 try {
-                  await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+                  await FirebaseAuth.instance.sendPasswordResetEmail(
+                    email: email,
+                  );
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text('Password reset link sent to $email'),
@@ -158,9 +161,7 @@ class _SignInPageState extends State<SignInPage> {
                   );
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Error: ${e.toString()}'),
-                    ),
+                    SnackBar(content: Text('Error: ${e.toString()}')),
                   );
                 }
               },
@@ -193,6 +194,51 @@ class _SignInPageState extends State<SignInPage> {
         const SizedBox(height: 15),
       ],
     );
+  }
+
+  void _handleGoogleSignIn(BuildContext context) async {
+    final authService = AuthService();
+    final user = await authService.signInWithGoogle();
+    if (user != null) {
+      Navigator.pushReplacementNamed(context, '/dashboard');
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Google sign-in failed')));
+    }
+  }
+
+  void _handleEmailSignIn(
+    BuildContext context,
+    String email,
+    String password,
+  ) async {
+    final authService = AuthService();
+    final user = await authService.signInWithEmail(email, password);
+    if (user != null) {
+      Navigator.pushReplacementNamed(context, '/dashboard');
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Email sign-in failed')));
+    }
+  }
+
+  void _handleEmailRegister(
+    BuildContext context,
+    String email,
+    String password,
+    String name,
+  ) async {
+    final authService = AuthService();
+    final user = await authService.registerWithEmail(email, password, name);
+    if (user != null) {
+      Navigator.pushReplacementNamed(context, '/dashboard');
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Registration failed')));
+    }
   }
 
   @override
@@ -265,7 +311,9 @@ class _SignInPageState extends State<SignInPage> {
                 GestureDetector(
                   onTap: () {
                     Navigator.of(context).push(
-                      MaterialPageRoute(builder: (context) => const SignUpPage()),
+                      MaterialPageRoute(
+                        builder: (context) => const SignUpPage(),
+                      ),
                     );
                   },
                   child: const Text.rich(
@@ -288,4 +336,3 @@ class _SignInPageState extends State<SignInPage> {
     );
   }
 }
-  

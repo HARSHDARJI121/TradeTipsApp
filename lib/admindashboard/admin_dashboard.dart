@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'news_page.dart';
-import 'all_users_page.dart'; // Added import for AllUsersPage
-import 'all_groups_page.dart'; // Added import for AllGroupsPage
+import 'all_users_page.dart';
+import 'all_groups_page.dart';
 import 'request_list_page.dart';
-import 'all_users_premium_plan_page.dart'; // Added import for AllUsersPremiumPlanPage
 
 class AdminDashboardPage extends StatefulWidget {
   const AdminDashboardPage({super.key});
@@ -129,9 +128,25 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       .collection('users')
                       .snapshots(),
                   builder: (context, snapshot) {
-                    final count = snapshot.hasData
-                        ? snapshot.data!.docs.length
-                        : 0;
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return _buildCircleBox(
+                        icon: Icons.people,
+                        label: "Total Users",
+                        count: "...",
+                        color1: Colors.blueAccent,
+                        color2: Colors.lightBlue,
+                      );
+                    }
+                    if (snapshot.hasError) {
+                      return _buildCircleBox(
+                        icon: Icons.people,
+                        label: "Total Users",
+                        count: "Err",
+                        color1: Colors.blueAccent,
+                        color2: Colors.lightBlue,
+                      );
+                    }
+                    final count = snapshot.data?.docs.length ?? 0;
                     return GestureDetector(
                       onTap: () {
                         Navigator.of(context).push(
@@ -156,9 +171,25 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       .collection('groups')
                       .snapshots(),
                   builder: (context, snapshot) {
-                    final count = snapshot.hasData
-                        ? snapshot.data!.docs.length
-                        : 0;
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return _buildCircleBox(
+                        icon: Icons.group_work,
+                        label: "All Groups",
+                        count: "...",
+                        color1: Colors.deepPurple,
+                        color2: Colors.purpleAccent,
+                      );
+                    }
+                    if (snapshot.hasError) {
+                      return _buildCircleBox(
+                        icon: Icons.group_work,
+                        label: "All Groups",
+                        count: "Err",
+                        color1: Colors.deepPurple,
+                        color2: Colors.purpleAccent,
+                      );
+                    }
+                    final count = snapshot.data?.docs.length ?? 0;
                     return GestureDetector(
                       onTap: () {
                         Navigator.of(context).push(
@@ -170,7 +201,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       child: _buildCircleBox(
                         icon: Icons.group_work,
                         label: "All Groups",
-                        count: "",
+                        count: "$count",
                         color1: Colors.deepPurple,
                         color2: Colors.purpleAccent,
                       ),
@@ -184,7 +215,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             const SizedBox(height: 30),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
+              children: const [
                 _RequestCircle(
                   groupName: 'free',
                   icon: Icons.group_add,
@@ -207,31 +238,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   label: 'Future Requests',
                 ),
               ],
-            ),
-            // Add the new button below the dashboard content
-            const SizedBox(height: 30),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.workspace_premium),
-              label: const Text('All Users Premium Plan'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 16,
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const AllUsersPremiumPlanPage(),
-                  ),
-                );
-              },
             ),
           ],
         ),
@@ -311,7 +317,25 @@ class _RequestCircle extends StatelessWidget {
             .where('status', isEqualTo: 'pending')
             .snapshots(),
         builder: (context, snapshot) {
-          final count = snapshot.hasData ? snapshot.data!.docs.length : 0;
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return buildCircleBox(
+              icon: icon,
+              label: '',
+              count: '...',
+              color1: color1,
+              color2: color2,
+            );
+          }
+          if (snapshot.hasError) {
+            return buildCircleBox(
+              icon: icon,
+              label: '',
+              count: 'Err',
+              color1: color1,
+              color2: color2,
+            );
+          }
+          final count = snapshot.data?.docs.length ?? 0;
           return GestureDetector(
             onTap: () {
               Navigator.of(context).push(
@@ -329,7 +353,7 @@ class _RequestCircle extends StatelessWidget {
               children: [
                 buildCircleBox(
                   icon: icon,
-                  label: '', // No label inside
+                  label: '',
                   count: '$count',
                   color1: color1,
                   color2: color2,
