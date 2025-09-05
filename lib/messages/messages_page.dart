@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../authication/helpers/chat_service.dart';
 
 class MessagesPage extends StatefulWidget {
   const MessagesPage({super.key});
@@ -349,24 +350,24 @@ class _GroupChatPageState extends State<GroupChatPage> {
       final userName = await _getCurrentUserName();
       final userEmail = user.email ?? '';
       final isAdminChat = widget.groupName == 'Admin Chat';
-      final adminId = 'admin';
+
       final messageData = {
         'text': text?.trim() ?? '',
-        'senderId': isAdminChat ? user.uid : user.uid,
+        'senderId': user.uid,
         'senderName': userName,
         'senderEmail': userEmail,
         'timestamp': FieldValue.serverTimestamp(),
-        'private': isAdminChat,
-        'participants': isAdminChat ? [adminId, user.uid] : null,
+        'isAdmin': false,
+        'status': 'sent',
+        'type': 'text',
         'imageUrl': imageUrl,
       }..removeWhere((k, v) => v == null);
+
       if (isAdminChat) {
-        await FirebaseFirestore.instance
-            .collection('admin_chats')
-            .doc(user.uid)
-            .collection('messages')
-            .add(messageData);
+        // Use the chat service for admin messages
+        await ChatService.sendUserMessageToAdmin(text: text?.trim() ?? '');
       } else {
+        // Send message to group chat
         await FirebaseFirestore.instance
             .collection('groups')
             .doc(groupId)

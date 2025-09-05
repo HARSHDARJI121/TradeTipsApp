@@ -12,14 +12,13 @@ import 'image_carousel.dart';
 import 'about_section.dart';
 import 'portfolio_management_section.dart';
 import 'premium_plans_section.dart';
-
 import 'contact_section.dart';
-
 
 import 'package:flutter/material.dart';
 
 class DashboardPage extends StatelessWidget {
   const DashboardPage({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -197,118 +196,177 @@ class DashboardPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // UserPlanSection(), // Removed: plan should only show in user plan page
             const ImageCarousel(),
-            // --- Recent News Card ---
+
+            // --- Latest News Section ---
+            // --- Latest News Section (Full-width horizontal cards) ---
+            const SizedBox(height: 16),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Card(
-                elevation: 4,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.article, color: Colors.deepPurple),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'Latest News',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
-                            ),
-                          ),
-                          const Spacer(),
-                          OutlinedButton(
-                            onPressed: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      NewsPage(isAdmin: false),
-                                ),
-                              );
-                            },
-                            child: const Text('View All News'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection('news')
-                            .orderBy('timestamp', descending: true)
-                            .limit(3)
-                            .snapshots(),
-                        builder: (context, snapshot) {
-                          if (snapshot.hasError) {
-                            return const Text('Error loading news.');
-                          }
-                          if (!snapshot.hasData) {
-                            return const Center(
-                              child: CircularProgressIndicator(),
-                            );
-                          }
-                          final newsDocs = snapshot.data!.docs;
-                          if (newsDocs.isEmpty) {
-                            return const Text('No news yet.');
-                          }
-                          return Column(
-                            children: newsDocs.map((news) {
-                              DateTime? dateTime;
-                              if (news['timestamp'] != null) {
-                                final ts = news['timestamp'];
-                                if (ts is Timestamp) {
-                                  dateTime = ts.toDate();
-                                } else if (ts is DateTime) {
-                                  dateTime = ts;
-                                }
-                              }
-                              String dateStr = dateTime != null
-                                  ? '${dateTime.day.toString().padLeft(2, '0')} '
-                                        '${_monthName(dateTime.month)} '
-                                        '${dateTime.year}'
-                                  : '';
-                              return ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: Text(
-                                  news['title'],
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  news['content'],
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                trailing: Text(
-                                  dateStr,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          );
-                        },
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Icon(Icons.article, color: Colors.deepPurple),
+                      SizedBox(width: 8),
+                      Text(
+                        'Latest News',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 22,
+                          color: Colors.deepPurple,
+                        ),
                       ),
                     ],
                   ),
-                ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Stock Trade',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('news')
+                        .orderBy('timestamp', descending: true)
+                        .limit(10)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return const Center(child: Text('Error loading news.'));
+                      }
+                      if (!snapshot.hasData) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      final newsDocs = snapshot.data!.docs;
+                      if (newsDocs.isEmpty) {
+                        return const Center(child: Text('No news yet.'));
+                      }
+
+                      return SizedBox(
+                        height: 180,
+                        child: PageView.builder(
+                          itemCount: newsDocs.length,
+                          controller: PageController(viewportFraction: 0.95),
+                          scrollDirection: Axis.horizontal,
+                          itemBuilder: (context, index) {
+                            final news = newsDocs[index];
+                            DateTime? dateTime;
+                            if (news['timestamp'] != null) {
+                              final ts = news['timestamp'];
+                              if (ts is Timestamp) {
+                                dateTime = ts.toDate();
+                              } else if (ts is DateTime) {
+                                dateTime = ts;
+                              }
+                            }
+                            String dateStr = dateTime != null
+                                ? '${dateTime.day.toString().padLeft(2, '0')} '
+                                      '${_monthName(dateTime.month)} '
+                                      '${dateTime.year}'
+                                : '';
+
+                            return Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 4),
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Colors.deepPurple.shade700,
+                                    const Color.fromARGB(255, 125, 221, 83),
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.3),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    dateStr,
+                                    style: const TextStyle(
+                                      color: Color.fromARGB(179, 242, 238, 238),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    news['title'] ?? '',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Expanded(
+                                    child: Text(
+                                      news['content'] ?? '',
+                                      style: const TextStyle(
+                                        color: Color.fromARGB(179, 255, 255, 255),
+                                        fontSize: 20,
+                                      ),
+                                      maxLines: 6,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => NewsPage(isAdmin: false),
+                        ),
+                      );
+                    },
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.deepPurple),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'View All News',
+                      style: TextStyle(color: Colors.deepPurple),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                ],
               ),
             ),
-            // --- End Recent News Card ---
+
+            // --- End Latest News Section ---
             const AboutSection(),
             const PortfolioManagementSection(),
             const PremiumPlansSection(),
             const ContactSection(),
-            SizedBox(height: 24),
+            const SizedBox(height: 24),
           ],
         ),
       ),

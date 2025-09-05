@@ -4,6 +4,7 @@ import 'splash screen/splash_screen.dart';
 import 'authication/sign_in.dart';
 import 'admindashboard/admin_dashboard.dart';
 import 'userdashboard/dashboard_page.dart';
+import 'messages/chat_test_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,7 +25,7 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.grey.shade100,
         fontFamily: 'Roboto',
       ),
-      home: const SplashScreen(),  // Start with splash screen
+      home: const SplashScreen(), // Start with splash screen
       routes: {
         '/login': (context) => const SignInPage(),
         '/admin': (context) => const AdminDashboardPage(),

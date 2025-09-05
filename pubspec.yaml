@@ -1,6 +1,6 @@
 name: flutter_application_1
-description: "A new Flutter project."
-publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+description: "A StockTrade Chat Application with Firebase Integration"
+publish_to: 'none'
 
 version: 1.0.0+1
 
@@ -10,27 +10,32 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  firebase_core: ^2.15.1
-  firebase_auth: ^4.17.5
-  cloud_firestore: ^4.17.5
+  firebase_core: ^4.1.0
+  firebase_auth: ^6.0.2
+  cloud_firestore: ^6.0.1
   cupertino_icons: ^1.0.8
   url_launcher: ^6.2.6
-  google_sign_in: ^6.1.5
-  intl: ^0.18.1
-
-
-  
+  google_sign_in: ^6.2.1
+  intl: ^0.20.2
+  flutter_bloc: ^9.1.1
+  equatable: ^2.0.5
+  cached_network_image: ^3.3.0
+  shimmer: ^3.0.0
+  emoji_picker_flutter: ^4.3.0
+  file_picker: ^10.3.2
+  open_filex: ^4.7.0
+  flutter_feather_icons: ^2.0.0+1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  flutter_launcher_icons: ^0.13.1
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
+  generate: true
 
-  # To add assets to your application, uncomment and edit the following lines:
   assets:
     - assets/google.png
     - assets/img1.jpg
@@ -41,6 +46,8 @@ flutter:
     - assets/scanner.jpg
     - assets/profile.jpg
     - assets/logo.png
+    # - assets/emojis/
+    # - assets/sounds/
 
 flutter_icons:
   android: true

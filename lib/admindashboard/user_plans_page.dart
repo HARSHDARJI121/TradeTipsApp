@@ -2,61 +2,56 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
-/// Removes the user from the related group and deletes the active plan.
-Future<void> removeUserFromGroupAndPlan({
+/// --- Remove user from group and delete their plan ---
+Future<void> deletePlanAndRemoveFromGroup({
   required String userId,
-  required String groupName,
-  required String planName,
+  required String planId,   // Firestore document ID of the plan
+  required String planType, // planType for group mapping
 }) async {
-  String getGroupDocName(String name) {
-    switch (name.toLowerCase()) {
+  final plansCollection = FirebaseFirestore.instance.collection('plans');
+
+  // 1️⃣ Delete the plan from Firestore (user/admin collection)
+  await plansCollection.doc(planId).delete();
+
+  // 2️⃣ Determine group document based on planType
+  String getGroupDocName(String type) {
+    final t = type.toLowerCase();
+    switch (t) {
       case 'free':
         return 'StockTrade';
       case 'premium':
         return 'StockTrade Premium';
       case 'future':
+      case 'futurepremium':
         return 'StockTrade Future';
       default:
-        return name;
+        return 'StockTrade';
     }
   }
 
-  final groupDoc = getGroupDocName(groupName);
+  final groupDoc = getGroupDocName(planType);
   final membersRef = FirebaseFirestore.instance
       .collection('groups')
       .doc(groupDoc)
       .collection('members');
 
-  // Delete by document ID
+  // 3️⃣ Remove the user from the group
   try {
     await membersRef.doc(userId).delete();
   } catch (_) {}
 
-  // Delete where 'userId' matches
   final snap1 = await membersRef.where('userId', isEqualTo: userId).get();
   for (var doc in snap1.docs) {
     await doc.reference.delete();
   }
 
-  // Delete where 'UserId' matches (case-sensitive)
   final snap2 = await membersRef.where('UserId', isEqualTo: userId).get();
   for (var doc in snap2.docs) {
     await doc.reference.delete();
   }
-
-  // Delete active plans for this user
-  final planSnap = await FirebaseFirestore.instance
-      .collection('plans')
-      .where('userId', isEqualTo: userId)
-      .where('planName', isEqualTo: planName)
-      .where('status', isEqualTo: 'active')
-      .get();
-
-  for (var doc in planSnap.docs) {
-    await doc.reference.delete();
-  }
 }
 
+/// --- User Plans Page ---
 class UserPlansPage extends StatefulWidget {
   final String userId;
   final String userName;
@@ -73,8 +68,7 @@ class UserPlansPage extends StatefulWidget {
 
 class _UserPlansPageState extends State<UserPlansPage> {
   String formatDate(dynamic date) {
-    if (date is Timestamp)
-      return DateFormat('dd/MM/yyyy').format(date.toDate());
+    if (date is Timestamp) return DateFormat('dd/MM/yyyy').format(date.toDate());
     if (date is DateTime) return DateFormat('dd/MM/yyyy').format(date);
     if (date is String) {
       try {
@@ -93,8 +87,9 @@ class _UserPlansPageState extends State<UserPlansPage> {
     return 'N/A';
   }
 
-  String getGroupNameFromPlanName(String planName) {
+  String getPlanType(String planName) {
     final p = planName.toLowerCase();
+    if (p.contains('premium') && p.contains('future')) return 'futurepremium';
     if (p.contains('premium')) return 'premium';
     if (p.contains('future')) return 'future';
     return 'free';
@@ -109,8 +104,8 @@ class _UserPlansPageState extends State<UserPlansPage> {
         title: Text(
           "${widget.userName}'s Plans",
           style: const TextStyle(
-            color: Colors.white, // White color for username
-            fontWeight: FontWeight.bold, // Bold username
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
           ),
         ),
         backgroundColor: Colors.deepPurple,
@@ -138,21 +133,21 @@ class _UserPlansPageState extends State<UserPlansPage> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             itemCount: docs.length,
             itemBuilder: (context, index) {
-              final data = docs[index].data() as Map<String, dynamic>;
+              final doc = docs[index];
+              final data = doc.data() as Map<String, dynamic>;
               final planName = data['planName'] ?? 'Unknown Plan';
+              final planType = data['planType'] ?? getPlanType(planName);
               final planCharge = getPlanCharge(planName);
               final start = (data['startDate'] as Timestamp?)?.toDate();
 
-              int duration = planName.toLowerCase().contains('future')
-                  ? 80
-                  : 30;
+              final int duration = planName.toLowerCase().contains('future') ? 80 : 30;
               final end = start?.add(Duration(days: duration));
               final expired = end != null && end.isBefore(now);
 
               return Container(
                 margin: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
+                  gradient: const LinearGradient(
                     colors: [Colors.deepPurple, Colors.purpleAccent],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -193,44 +188,16 @@ class _UserPlansPageState extends State<UserPlansPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 4),
-                      Text(
-                        'Plan Charges: ₹$planCharge',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 15,
-                        ),
-                      ),
-                      Text(
-                        'Start Date:  ${formatDate(start)}',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 15,
-                        ),
-                      ),
-                      Text(
-                        'End Date: ${formatDate(end)}',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 15,
-                        ),
-                      ),
+                      Text('Plan Charges: ₹$planCharge', style: const TextStyle(color: Colors.white70, fontSize: 15)),
+                      Text('Start Date: ${formatDate(start)}', style: const TextStyle(color: Colors.white70, fontSize: 15)),
+                      Text('End Date: ${formatDate(end)}', style: const TextStyle(color: Colors.white70, fontSize: 15)),
                       const SizedBox(height: 4),
-                      Text(
-                        'Status: ${expired ? 'Expired' : 'Active'}',
-                        style: TextStyle(
-                          color: expired ? Colors.red[200] : Colors.greenAccent,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                        ),
-                      ),
+                      Text('Status: ${expired ? 'Expired' : 'Active'}', style: TextStyle(color: expired ? Colors.red[200] : Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 15)),
+                      Text('Plan Type: $planType', style: const TextStyle(color: Colors.white70, fontSize: 15)),
                     ],
                   ),
                   trailing: IconButton(
-                    icon: const Icon(
-                      Icons.delete,
-                      color: Colors.redAccent,
-                      size: 28,
-                    ),
+                    icon: const Icon(Icons.delete, color: Colors.redAccent, size: 28),
                     tooltip: 'Delete Plan',
                     onPressed: () async {
                       final confirm = await showDialog<bool>(
@@ -238,18 +205,13 @@ class _UserPlansPageState extends State<UserPlansPage> {
                         builder: (c) => AlertDialog(
                           title: const Text('Delete Plan'),
                           content: Text(
-                            'Are you sure you want to delete the "$planName" plan for ${widget.userName}? This will also remove them from the group.',
+                            'Are you sure you want to delete the "$planName" plan for ${widget.userName}? It will be removed from both admin and user plan, and group membership.',
                           ),
                           actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(c, false),
-                              child: const Text('Cancel'),
-                            ),
+                            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
                             ElevatedButton(
                               onPressed: () => Navigator.pop(c, true),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.red,
-                              ),
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                               child: const Text('Delete'),
                             ),
                           ],
@@ -261,24 +223,20 @@ class _UserPlansPageState extends State<UserPlansPage> {
                       showDialog(
                         context: context,
                         barrierDismissible: false,
-                        builder: (_) =>
-                            const Center(child: CircularProgressIndicator()),
+                        builder: (_) => const Center(child: CircularProgressIndicator()),
                       );
-                      final groupName = getGroupNameFromPlanName(planName);
 
-                      await removeUserFromGroupAndPlan(
+                      await deletePlanAndRemoveFromGroup(
                         userId: widget.userId,
-                        groupName: groupName,
-                        planName: planName,
+                        planId: doc.id,     // Pass the document ID
+                        planType: planType, // Pass planType for correct group removal
                       );
 
                       if (mounted) {
                         Navigator.pop(context); // close loader
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text(
-                              'Deleted "$planName" and removed ${widget.userName} from group.',
-                            ),
+                            content: Text('Deleted "$planName" and removed ${widget.userName} from group.'),
                             backgroundColor: Colors.green,
                           ),
                         );

@@ -206,6 +206,8 @@ class ChatService {
   static Future<void> sendAdminMessage({
     required String userId,
     required String text,
+    required String userName,
+    required String userEmail,
   }) async {
     try {
       final adminDoc = await _firestore
@@ -215,7 +217,11 @@ class ChatService {
       final adminData = adminDoc.data();
       final adminName = adminData?['name'] ?? 'Admin';
 
-      final messageRef = _firestore.collection('admin_chats/$userId').doc();
+      final messageRef = _firestore
+          .collection('admin_chats')
+          .doc(userId)
+          .collection('messages')
+          .doc();
 
       await messageRef.set({
         'text': text.trim(),
@@ -228,6 +234,18 @@ class ChatService {
         'type': 'text',
       });
 
+      // Update conversation metadata for list view
+      await _firestore.collection('admin_chats').doc(userId).set({
+        'userId': userId,
+        'userName': userName,
+        'userEmail': userEmail,
+        'lastMessage': text.trim(),
+        'lastMessageTimestamp': FieldValue.serverTimestamp(),
+        'lastSenderId': _auth.currentUser?.uid,
+        'lastSenderName': adminName,
+        'unreadForAdmin': 0,
+      }, SetOptions(merge: true));
+
       // Update to delivered
       Future.delayed(const Duration(seconds: 1), () async {
         try {
@@ -238,6 +256,60 @@ class ChatService {
       });
     } catch (e) {
       throw Exception('Failed to send admin message: $e');
+    }
+  }
+
+  // Send user message to admin
+  static Future<void> sendUserMessageToAdmin({required String text}) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) throw Exception('User not authenticated');
+
+      // Get user data
+      final userDoc = await _firestore.collection('users').doc(user.uid).get();
+      final userData = userDoc.data();
+      final userName = userData?['name'] ?? 'User';
+      final userEmail = user.email ?? '';
+
+      final messageRef = _firestore
+          .collection('admin_chats')
+          .doc(user.uid)
+          .collection('messages')
+          .doc();
+
+      await messageRef.set({
+        'text': text.trim(),
+        'senderId': user.uid,
+        'senderName': userName,
+        'timestamp': FieldValue.serverTimestamp(),
+        'isAdmin': false,
+        'status': 'sent',
+        'messageId': messageRef.id,
+        'type': 'text',
+      });
+
+      // Update conversation metadata for list view
+      await _firestore.collection('admin_chats').doc(user.uid).set({
+        'userId': user.uid,
+        'userName': userName,
+        'userEmail': userEmail,
+        'lastMessage': text.trim(),
+        'lastMessageTimestamp': FieldValue.serverTimestamp(),
+        'lastSenderId': user.uid,
+        'lastSenderName': userName,
+        'unreadForAdmin': FieldValue.increment(1),
+      }, SetOptions(merge: true));
+
+      // Update to delivered
+      Future.delayed(const Duration(seconds: 1), () async {
+        try {
+          await messageRef.update({'status': 'delivered'});
+        } catch (e) {
+          // Ignore errors
+        }
+      });
+    } catch (e) {
+      throw Exception('Failed to send user message: $e');
     }
   }
 }
