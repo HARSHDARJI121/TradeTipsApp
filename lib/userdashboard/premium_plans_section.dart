@@ -1,10 +1,50 @@
-// File path: lib/userdashboard/premium_plans_section.dart
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'payment_helpers.dart';
 
-class PremiumPlansSection extends StatelessWidget {
+class PremiumPlansSection extends StatefulWidget {
   const PremiumPlansSection({super.key});
+
+  @override
+  _PremiumPlansSectionState createState() => _PremiumPlansSectionState();
+}
+
+class _PremiumPlansSectionState extends State<PremiumPlansSection> with WidgetsBindingObserver {
+  static const platform = MethodChannel('com.example.final_stock/upi');
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // 🛠️ Set up platform channel listener for UPI results
+    platform.setMethodCallHandler((call) async {
+      if (call.method == 'onUPIResult') {
+        final response = call.arguments as Map;
+        handleUPIResponse(
+          context,
+          response: response.cast<String, String>(),
+          amount: call.arguments['amount'] ?? '0',
+          planType: call.arguments['planType'] ?? 'Unknown',
+          transactionId: call.arguments['transactionId'] ?? 'Unknown',
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // 🛠️ Handle UPI response when app resumes
+      // Note: Response is handled via platform channel
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final double maxWidth = MediaQuery.of(context).size.width > 900
@@ -55,16 +95,17 @@ class PremiumPlansSection extends StatelessWidget {
                         title: "Standard Plan",
                         subtitle: "Premium plan for one month",
                         description: "Get accurate stock market insights",
-                        price: "₹1 / month",
+                        price: "₹5000 / month",
                         buttonColor: Colors.blueAccent,
                         onPressed: () {
                           launchUPI(
                             context,
                             payeeVPA: 'jaydarji1977@oksbi',
                             payeeName: 'StockTrade',
-                            amount: '1', // Changed to 1
+                            amount: '5000', // 🛠️ Realistic amount
                             transactionNote: 'Standard Plan Payment',
                             planType: 'Standard Plan',
+                            requestCode: 100, // 🛠️ Added request code
                           );
                         },
                       ),
@@ -77,16 +118,17 @@ class PremiumPlansSection extends StatelessWidget {
                         title: "Premium Plan",
                         subtitle: "Premium plan for three months",
                         description: "Advanced stock trading analysis",
-                        price: "₹1 / 3 months",
+                        price: "₹15000 / 3 months",
                         buttonColor: Colors.deepPurple,
                         onPressed: () {
                           launchUPI(
                             context,
-                            payeeVPA: 'jaydarji1977@oksbi.com',
+                            payeeVPA: 'jaydarji1977@oksbi', // 🛠️ Fixed VPA
                             payeeName: 'StockTrade',
-                            amount: '1', // Changed to 1
+                            amount: '15000', // 🛠️ Realistic amount
                             transactionNote: 'Premium Plan Payment',
                             planType: 'Premium Plan',
+                            requestCode: 101, // 🛠️ Unique request code
                           );
                         },
                       ),
@@ -204,4 +246,3 @@ class _PlanCard extends StatelessWidget {
     );
   }
 }
-

@@ -24,7 +24,10 @@ dependencies:
   emoji_picker_flutter: ^4.3.0
   file_picker: ^10.3.2
   open_filex: ^4.7.0
+  auto_size_text: ^3.0.0
   flutter_feather_icons: ^2.0.0+1
+  image_picker: ^1.1.0
+  firebase_storage: ^13.0.1
 
 dev_dependencies:
   flutter_test:

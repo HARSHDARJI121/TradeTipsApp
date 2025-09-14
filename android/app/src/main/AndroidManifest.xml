@@ -1,9 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.final_stock">
     <application
-        android:label="Stock Trade"
-        android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+            android:label="final_stock"
+            android:icon="@mipmap/ic_launcher"
+            android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

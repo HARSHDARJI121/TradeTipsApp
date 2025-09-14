@@ -264,10 +264,10 @@ class _MessagesPageState extends State<MessagesPage> {
   }
 }
 
-// sendJoinRequest remains outside the class
 Future<void> sendJoinRequest(String groupName, String type) async {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return;
+
   // Fetch the user's name from the users collection
   final userDoc = await FirebaseFirestore.instance
       .collection('users')
@@ -275,7 +275,7 @@ Future<void> sendJoinRequest(String groupName, String type) async {
       .get();
   final userName = userDoc.data()?['name'] ?? '';
 
-  // Map groupName to Firestore value for admin dashboard
+  // Map groupName to Firestore value used in admin dashboard
   String mappedGroupName;
   if (groupName == 'StockTrade') {
     mappedGroupName = 'free';
@@ -287,6 +287,19 @@ Future<void> sendJoinRequest(String groupName, String type) async {
     mappedGroupName = groupName.toLowerCase();
   }
 
+  // Check if a pending request already exists for this user and group
+  final existingRequest = await FirebaseFirestore.instance
+      .collection('requests')
+      .where('userId', isEqualTo: user.uid)
+      .where('groupName', isEqualTo: mappedGroupName)
+      .where('status', isEqualTo: 'pending')
+      .get();
+
+  if (existingRequest.docs.isNotEmpty) {
+    throw Exception('You have already sent a request for this group.');
+  }
+
+  // Add a new join request
   await FirebaseFirestore.instance.collection('requests').add({
     'userEmail': user.email,
     'userName': userName,
@@ -371,7 +384,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
         await FirebaseFirestore.instance
             .collection('groups')
             .doc(groupId)
-            .collection('messages')
+            .collection('messages') 
             .add(messageData);
       }
     } catch (e) {
@@ -882,24 +895,31 @@ class _ChatInputBar extends StatefulWidget {
 
 class _ChatInputBarState extends State<_ChatInputBar> {
   bool _hoverSend = false;
+
+  void _handleSend(String text) {
+    if (text.trim().isEmpty) return;
+    widget.onSend(text);
+    widget.controller.clear(); // Clear input after sending
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.fromLTRB(0, 0, 0, 8),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.7),
-        borderRadius: BorderRadius.circular(22),
+        color: Colors.white.withOpacity(0.85),
+        borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: Colors.black12,
-            blurRadius: 8,
+            color: widget.groupColor.withOpacity(0.10),
+            blurRadius: 16,
             offset: const Offset(0, -2),
           ),
         ],
         border: Border.all(
-          color: widget.groupColor.withOpacity(0.13),
-          width: 1.1,
+          color: widget.groupColor.withOpacity(0.18),
+          width: 1.2,
         ),
         backgroundBlendMode: BlendMode.overlay,
       ),
@@ -911,55 +931,73 @@ class _ChatInputBarState extends State<_ChatInputBar> {
             ),
             child: Container(
               decoration: BoxDecoration(
-                color: widget.groupColor.withOpacity(0.10),
-                borderRadius: BorderRadius.circular(12),
+                color: widget.groupColor.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: widget.groupColor.withOpacity(0.08),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               padding: const EdgeInsets.all(8),
               child: Icon(Icons.image, color: widget.groupColor, size: 26),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Expanded(
             child: TextField(
               controller: widget.controller,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: 'Type a message...',
+                hintStyle: TextStyle(
+                  color: widget.groupColor.withOpacity(0.5),
+                  fontWeight: FontWeight.w500,
+                  fontSize: 16,
+                ),
                 border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
               ),
               minLines: 1,
               maxLines: 4,
               style: const TextStyle(fontSize: 16),
-              onSubmitted: widget.onSend,
+              onSubmitted: _handleSend,
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           MouseRegion(
             onEnter: (_) => setState(() => _hoverSend = true),
             onExit: (_) => setState(() => _hoverSend = false),
             child: GestureDetector(
-              onTap: () => widget.onSend(widget.controller.text),
+              onTap: () => _handleSend(widget.controller.text),
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
+                duration: const Duration(milliseconds: 180),
                 curve: Curves.easeInOut,
                 decoration: BoxDecoration(
-                  color: _hoverSend
-                      ? widget.groupColor.withOpacity(0.85)
-                      : widget.groupColor.withOpacity(0.7),
-                  borderRadius: BorderRadius.circular(16),
+                  gradient: LinearGradient(
+                    colors: [
+                      widget.groupColor.withOpacity(_hoverSend ? 0.95 : 0.8),
+                      widget.groupColor.withOpacity(_hoverSend ? 0.85 : 0.7),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     if (_hoverSend)
                       BoxShadow(
                         color: widget.groupColor.withOpacity(0.18),
-                        blurRadius: 8,
+                        blurRadius: 10,
                         offset: const Offset(0, 2),
                       ),
                   ],
                 ),
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
+                  horizontal: 16,
+                  vertical: 12,
                 ),
-                child: Icon(Icons.send, color: Colors.white, size: 24),
+                child: Icon(Icons.send, color: Colors.white, size: 26),
               ),
             ),
           ),

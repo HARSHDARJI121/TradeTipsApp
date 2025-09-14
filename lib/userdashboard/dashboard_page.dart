@@ -1,5 +1,3 @@
-// File path: lib/userdashboard/dashboard_page.dart
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_application_1/admindashboard/news_page.dart';
@@ -15,6 +13,7 @@ import 'premium_plans_section.dart';
 import 'contact_section.dart';
 
 import 'package:flutter/material.dart';
+import 'package:auto_size_text/auto_size_text.dart';
 
 class DashboardPage extends StatelessWidget {
   const DashboardPage({super.key});
@@ -198,8 +197,6 @@ class DashboardPage extends StatelessWidget {
           children: [
             const ImageCarousel(),
 
-            // --- Latest News Section ---
-            // --- Latest News Section (Full-width horizontal cards) ---
             const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -306,31 +303,38 @@ class DashboardPage extends StatelessWidget {
                                     ),
                                   ),
                                   const SizedBox(height: 8),
-                                  Text(
+
+                                  // Title with dynamic size
+                                  AutoSizeText(
                                     news['title'] ?? '',
                                     style: const TextStyle(
                                       color: Colors.white,
-                                      fontSize: 16,
                                       fontWeight: FontWeight.bold,
                                     ),
                                     maxLines: 2,
+                                    minFontSize: 14,
+                                    maxFontSize: 22,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   const SizedBox(height: 8),
+
+                                  // Content with dynamic size
                                   Expanded(
-                                    child: Text(
+                                    child: AutoSizeText(
                                       news['content'] ?? '',
                                       style: const TextStyle(
-                                        color: Color.fromARGB(179, 255, 255, 255),
-                                        fontSize: 20,
+                                        color: Colors.white70,
                                       ),
                                       maxLines: 6,
+                                      minFontSize: 10,
+                                      maxFontSize: 18,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                 ],
                               ),
                             );
+
                           },
                         ),
                       );
@@ -361,7 +365,6 @@ class DashboardPage extends StatelessWidget {
               ),
             ),
 
-            // --- End Latest News Section ---
             const AboutSection(),
             const PortfolioManagementSection(),
             const PremiumPlansSection(),

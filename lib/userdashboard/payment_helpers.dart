@@ -1,12 +1,17 @@
-// File path: lib/userdashboard/payment_helpers.dart
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../messages/messages_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+// 🛠️ Constants for UPI limits and error codes
+const double maxUPILimit = 100000.0; // Typical UPI daily limit in INR
+const String bankLimitErrorCode = 'U13'; // UPI error code for limit exceeded
+const String insufficientFundsCode = 'U19'; // UPI error code for low balance
+
 // 🔧 UPI Launch Function - Direct Google Pay with Payment Verification
+// In payment_helpers.dart, update launchUPI to use the channel
 Future<void> launchUPI(
   BuildContext context, {
   required String payeeVPA,
@@ -14,51 +19,168 @@ Future<void> launchUPI(
   required String amount,
   required String transactionNote,
   required String planType,
+  required int requestCode,
 }) async {
   try {
-    // Generate unique transaction ID
-    final transactionId = 'TXN 2${DateTime.now().millisecondsSinceEpoch}';
+    // 🛠️ Validate amount against UPI limits
+    final double parsedAmount = double.tryParse(amount) ?? 0.0;
+    if (parsedAmount <= 0 || parsedAmount > maxUPILimit) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Invalid amount. Must be between ₹1 and ₹1,00,000 (UPI daily limit).'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
-    // Create UPI URL for Google Pay with transaction ID
+    // 🛠️ Warn user about potential bank limits for high amounts
+    if (parsedAmount > 50000) {
+      final proceed = await _showHighAmountWarning(context, amount);
+      if (!proceed) return;
+    }
+
+    // Generate unique transaction ID
+    final transactionId = 'TXN_${DateTime.now().millisecondsSinceEpoch}';
+
+    // Create UPI URL
     final upiUrl =
         'upi://pay?pa=$payeeVPA&pn=$payeeName&am=$amount&cu=INR&tn=$transactionNote&tr=$transactionId';
-    final uri = Uri.parse(upiUrl);
 
-    // Show payment instructions first
+    // Show payment instructions
     await _showPaymentInstructions(context, amount, planType, transactionId);
 
-    // Try to open Google Pay
-    try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    // 🛠️ Launch via platform channel
+    await launchUPIWithChannel(
+      context,
+      uri: upiUrl,
+      amount: amount,
+      planType: planType,
+      transactionId: transactionId,
+    );
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error initiating payment: $e')),
+    );
+  }
+}
+
+Future<void> launchUPIWithChannel(
+  BuildContext context, {
+  required String uri,
+  required String amount,
+  required String planType,
+  required String transactionId,
+}) async {
+  const platform = MethodChannel('com.example.final_stock/upi');
+  try {
+    await platform.invokeMethod('launchUPI', {
+      'uri': uri,
+      'amount': amount,
+      'planType': planType,
+      'transactionId': transactionId,
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Opening Google Pay...')),
+    );
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error launching UPI: $e')),
+    );
+    await _showUPIAppSelection(
+      context,
+      'jaydarji1977@oksbi',
+      'StockTrade',
+      amount,
+      'StockTrade $planType',
+      transactionId,
+      planType,
+      100, // Default request code
+    );
+  }
+}
+
+// 🛠️ Handle UPI Response from Intent
+void handleUPIResponse(
+  BuildContext context, {
+  required Map<String, String> response,
+  required String amount,
+  required String planType,
+  required String transactionId,
+}) async {
+  try {
+    final status = response['Status']?.toUpperCase();
+    final responseCode = response['responseCode'];
+
+    if (status == 'SUCCESS') {
+      await _handlePaymentSuccess(context, amount, planType, transactionId);
+    } else {
+      String errorMessage = 'Payment failed. Please try again.';
+      if (responseCode == bankLimitErrorCode) {
+        errorMessage =
+            'Payment failed: Exceeded bank transaction limit. Increase your bank\'s UPI limit or try again tomorrow. Funds not debited.';
+      } else if (responseCode == insufficientFundsCode) {
+        errorMessage = 'Payment failed: Insufficient balance in your account.';
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Opening Google Pay for payment...')),
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
       );
 
-      // Wait for user to complete payment
-      await Future.delayed(const Duration(seconds: 3));
-      await _showPaymentVerificationDialog(
-        context,
-        amount,
-        planType,
-        transactionId,
-      );
-    } catch (e) {
-      // Fallback: try alternative UPI apps
-      await _showUPIAppSelection(
-        context,
-        payeeVPA,
-        payeeName,
-        amount,
-        transactionNote,
-        transactionId,
-        planType,
-      );
+      // 🛠️ Offer to retry with different app
+      await _showRetryDialog(context, amount, planType, transactionId);
     }
   } catch (e) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Error: $e')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error processing response: $e')),
+    );
   }
+}
+
+// 🛠️ High Amount Warning Dialog
+Future<bool> _showHighAmountWarning(BuildContext context, String amount) async {
+  return await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('High Amount Warning'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('You are about to pay ₹$amount.'),
+                const SizedBox(height: 8),
+                const Text(
+                  'Note: Many banks have a daily UPI limit of ₹1,00,000. Ensure your bank allows this amount.',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'To increase limit, check your bank app (Profile > UPI Settings).',
+                  style: TextStyle(color: Colors.orange),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Proceed'),
+              ),
+            ],
+          );
+        },
+      ) ??
+      false;
 }
 
 // 🔧 Show Payment Instructions
@@ -78,7 +200,7 @@ Future<void> _showPaymentInstructions(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Amount: 2$amount'),
+            Text('Amount: ₹$amount'),
             Text('Plan: $planType'),
             Text('Transaction ID: $transactionId'),
             const SizedBox(height: 16),
@@ -88,7 +210,7 @@ Future<void> _showPaymentInstructions(
             ),
             const SizedBox(height: 8),
             const Text(
-              'Important: Keep this transaction ID for verification.',
+              'Important: Keep this transaction ID for verification. Ensure your bank allows this payment amount.',
               style: TextStyle(color: Colors.orange),
             ),
           ],
@@ -99,10 +221,57 @@ Future<void> _showPaymentInstructions(
             child: const Text('Cancel'),
           ),
           ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Proceed'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+// 🛠️ Retry Dialog for Failed Payments
+Future<void> _showRetryDialog(
+  BuildContext context,
+  String amount,
+  String planType,
+  String transactionId,
+) async {
+  return showDialog(
+    context: context,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        title: const Text('Retry Payment'),
+        content: const Text(
+          'Would you like to retry with another payment app or contact support?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
             onPressed: () {
               Navigator.pop(context);
+              launchUPI(
+                context,
+                payeeVPA: 'jaydarji1977@oksbi',
+                payeeName: 'Jay Darji',
+                amount: amount,
+                transactionNote: 'StockTrade $planType',
+                planType: planType,
+                requestCode: 100, // Adjust as needed
+              );
             },
-            child: const Text('Proceed'),
+            child: const Text('Retry with Another App'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              launchUrl(Uri.parse('https://pay.google.com/intl/en_in/about/'),
+                  mode: LaunchMode.externalApplication);
+            },
+            child: const Text('Contact GPay Support'),
           ),
         ],
       );
@@ -119,6 +288,7 @@ Future<void> _showUPIAppSelection(
   String transactionNote,
   String transactionId,
   String planType,
+  int requestCode,
 ) async {
   return showDialog(
     context: context,
@@ -134,19 +304,12 @@ Future<void> _showUPIAppSelection(
               onTap: () async {
                 Navigator.pop(context);
                 try {
-                  final googlePayUri = Uri.parse(
-                    'com.google.android.apps.nbu.paisa.user://',
-                  );
-                  await launchUrl(
-                    googlePayUri,
-                    mode: LaunchMode.externalApplication,
-                  );
-                  await Future.delayed(const Duration(seconds: 3));
-                  await _showPaymentVerificationDialog(
-                    context,
-                    amount,
-                    planType,
-                    transactionId,
+                  final upiUrl =
+                      'upi://pay?pa=$payeeVPA&pn=$payeeName&am=$amount&cu=INR&tn=$transactionNote&tr=$transactionId';
+                  await launchUrl(Uri.parse(upiUrl),
+                      mode: LaunchMode.externalApplication);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Opening Google Pay...')),
                   );
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -164,16 +327,10 @@ Future<void> _showUPIAppSelection(
                   final phonePeUri = Uri.parse(
                     'phonepe://pay?pa=$payeeVPA&pn=$payeeName&am=$amount&cu=INR&tn=$transactionNote&tr=$transactionId',
                   );
-                  await launchUrl(
-                    phonePeUri,
-                    mode: LaunchMode.externalApplication,
-                  );
-                  await Future.delayed(const Duration(seconds: 3));
-                  await _showPaymentVerificationDialog(
-                    context,
-                    amount,
-                    planType,
-                    transactionId,
+                  await launchUrl(phonePeUri,
+                      mode: LaunchMode.externalApplication);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Opening PhonePe...')),
                   );
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -191,16 +348,10 @@ Future<void> _showUPIAppSelection(
                   final paytmUri = Uri.parse(
                     'paytmmp://pay?pa=$payeeVPA&pn=$payeeName&am=$amount&cu=INR&tn=$transactionNote&tr=$transactionId',
                   );
-                  await launchUrl(
-                    paytmUri,
-                    mode: LaunchMode.externalApplication,
-                  );
-                  await Future.delayed(const Duration(seconds: 3));
-                  await _showPaymentVerificationDialog(
-                    context,
-                    amount,
-                    planType,
-                    transactionId,
+                  await launchUrl(paytmUri,
+                      mode: LaunchMode.externalApplication);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Opening Paytm...')),
                   );
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -239,7 +390,7 @@ Future<void> _showPaymentVerificationDialog(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Amount: 2$amount'),
+            Text('Amount: ₹$amount'),
             Text('Plan: $planType'),
             Text('Transaction ID: $transactionId'),
             const SizedBox(height: 16),
@@ -260,11 +411,10 @@ Future<void> _showPaymentVerificationDialog(
                 border: Border.all(color: Colors.orange),
               ),
               child: const Text(
-                ' 20 Only confirm if payment is actually successful',
+                'Only confirm if payment is actually successful',
                 style: TextStyle(
                   color: Colors.orange,
-                  fontWeight: FontWeight.bold,
-                ),
+                  fontWeight: FontWeight.bold),
               ),
             ),
           ],
@@ -273,6 +423,7 @@ Future<void> _showPaymentVerificationDialog(
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
+              _showRetryDialog(context, amount, planType, transactionId);
             },
             child: const Text('Payment Failed'),
           ),
@@ -369,9 +520,8 @@ Future<void> _handleBasicPlanJoin(BuildContext context) async {
     );
 
     // Navigate to messages page to show the group
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (context) => const MessagesPage()));
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (context) => const MessagesPage()));
   } catch (e) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -448,7 +598,7 @@ Future<void> _handlePaymentSuccess(
       'timestamp': FieldValue.serverTimestamp(),
       'status': 'pending_verification',
       'message':
-          '$userName has made a payment of 2$amount for $planType. Transaction ID: $transactionId. Please verify the payment.',
+          '$userName has made a payment of ₹$amount for $planType. Transaction ID: $transactionId. Please verify the payment.',
     });
 
     // Show success message with verification notice
@@ -463,9 +613,8 @@ Future<void> _handlePaymentSuccess(
     );
 
     // Navigate to messages page to show the group
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (context) => const MessagesPage()));
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (context) => const MessagesPage()));
   } catch (e) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
