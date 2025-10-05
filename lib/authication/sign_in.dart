@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 import '../userdashboard/dashboard_page.dart';
 import '../admindashboard/admin_dashboard.dart';
@@ -121,7 +123,6 @@ class _SignInPageState extends State<SignInPage> {
     }
   }
 
-
   void _showForgotPasswordDialog() {
     final TextEditingController emailController = TextEditingController();
 
@@ -238,6 +239,31 @@ class _SignInPageState extends State<SignInPage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Registration failed')));
+    }
+  }
+
+  Future<void> checkDeviceToken(User user, BuildContext context) async {
+    final token = await FirebaseMessaging.instance.getToken();
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+    final savedToken = doc.data()?['deviceToken'];
+    if (savedToken != null && savedToken != token) {
+      await FirebaseAuth.instance.signOut();
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Logged out'),
+          content: const Text('Your account was logged in on another device.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
     }
   }
 

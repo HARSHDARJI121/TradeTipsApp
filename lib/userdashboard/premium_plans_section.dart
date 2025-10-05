@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'payment_helpers.dart';
+import 'package:razorpay_flutter/razorpay_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class PremiumPlansSection extends StatefulWidget {
   const PremiumPlansSection({super.key});
@@ -9,40 +11,108 @@ class PremiumPlansSection extends StatefulWidget {
   _PremiumPlansSectionState createState() => _PremiumPlansSectionState();
 }
 
-class _PremiumPlansSectionState extends State<PremiumPlansSection> with WidgetsBindingObserver {
-  static const platform = MethodChannel('com.example.final_stock/upi');
+class _PremiumPlansSectionState extends State<PremiumPlansSection>
+    with WidgetsBindingObserver {
+  late Razorpay _razorpay;
+  String _lastPlanType = "Free Plan";
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // 🛠️ Set up platform channel listener for UPI results
-    platform.setMethodCallHandler((call) async {
-      if (call.method == 'onUPIResult') {
-        final response = call.arguments as Map;
-        handleUPIResponse(
-          context,
-          response: response.cast<String, String>(),
-          amount: call.arguments['amount'] ?? '0',
-          planType: call.arguments['planType'] ?? 'Unknown',
-          transactionId: call.arguments['transactionId'] ?? 'Unknown',
-        );
-      }
-    });
+
+    _razorpay = Razorpay();
+    _razorpay.on(Razorpay.EVENT_PAYMENT_SUCCESS, _handlePaymentSuccess);
+    _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _handlePaymentError);
+    _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _razorpay.clear(); // Clean up
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // 🛠️ Handle UPI response when app resumes
-      // Note: Response is handled via platform channel
+      // 🛠️ Handle app resume after payment if needed
     }
+  }
+
+  void openCheckout({required String amount, required String planType}) {
+    var options = {
+      'key': 'rzp_test_RPmVzMiZjk5mmt', // ✅ Replace with your Razorpay Key ID
+      'amount': int.parse(amount) * 100, // Razorpay works with paise
+      'name': 'StockTrade',
+      'description': planType,
+      'prefill': {
+        'contact': '7400356323',
+        'email': 'darrjiharsh2005@gmail.com',
+      },
+      'external': {
+        'wallets': ['paytm'],
+      },
+    };
+
+    try {
+      _razorpay.open(options);
+      setState(() {
+        _lastPlanType = planType;
+      });
+    } catch (e) {
+      debugPrint("Error: $e");
+    }
+  }
+
+  void _handlePaymentSuccess(PaymentSuccessResponse response) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      await FirebaseFirestore.instance.collection('requests').add({
+        'userId': user.uid,
+        'userName': user.displayName ?? 'User',
+        'userEmail': user.email,
+        'planName': _lastPlanType,
+        'type': _lastPlanType,
+        // Correct mapping:
+        'groupName': _lastPlanType == "Standard Plan"
+            ? "premium" // Standard Plan → StockTrade Premium group
+            : _lastPlanType == "Premium Plan"
+            ? "future" // Premium Plan → StockTrade Future group
+            : "free",
+        'paymentId': response.paymentId,
+        'timestamp': FieldValue.serverTimestamp(),
+        'status': 'pending',
+      });
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          "✅ Payment Successful\nPayment ID: ${response.paymentId}\nJoin request sent to admin!",
+        ),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
+  void _handlePaymentError(PaymentFailureResponse response) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("❌ Payment Failed\n${response.message}"),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  void _handleExternalWallet(ExternalWalletResponse response) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("Wallet Selected: ${response.walletName}"),
+        backgroundColor: Colors.blue,
+      ),
+    );
   }
 
   @override
@@ -83,7 +153,55 @@ class _PremiumPlansSectionState extends State<PremiumPlansSection> with WidgetsB
                         price: "Free",
                         buttonColor: Colors.greenAccent.shade700,
                         onPressed: () async {
-                          await handleFreePlanJoin(context);
+  final user = FirebaseAuth.instance.currentUser;
+                          if (user == null) return;
+
+                          final existingRequest = await FirebaseFirestore.instance
+                              .collection('requests')
+                              .where('userId', isEqualTo: user.uid)
+                              .where('groupName', isEqualTo: 'free')
+                              .where('status', isEqualTo: 'pending')
+                              .get();
+
+                          if (existingRequest.docs.isNotEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text("⚠️ You already have a pending request."),
+                                backgroundColor: Colors.orange,
+                              ),
+                            );
+                            return;
+                          }
+
+                          final userDoc = await FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(user.uid)
+                              .get();
+                          final userData = userDoc.data() ?? {};
+
+                          final request = {
+                            'userId': user.uid,
+                            'userName':
+                                userData['name'] ?? user.displayName ?? 'User',
+                            'userEmail': user.email ?? userData['email'] ?? '',
+                            'groupName': 'free',
+                            'type': 'Free Plan',
+                            'status': 'pending',
+                            'requestedAt': DateTime.now(),
+                          };
+
+                          await FirebaseFirestore.instance
+                              .collection('requests')
+                              .add(request);
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                "✅ Your request has been sent to the admin.",
+                              ),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
                         },
                       ),
                       if (isWide)
@@ -95,18 +213,10 @@ class _PremiumPlansSectionState extends State<PremiumPlansSection> with WidgetsB
                         title: "Standard Plan",
                         subtitle: "Premium plan for one month",
                         description: "Get accurate stock market insights",
-                        price: "₹5000 / month",
+                        price: "₹1 / month",
                         buttonColor: Colors.blueAccent,
                         onPressed: () {
-                          launchUPI(
-                            context,
-                            payeeVPA: 'jaydarji1977@oksbi',
-                            payeeName: 'StockTrade',
-                            amount: '5000', // 🛠️ Realistic amount
-                            transactionNote: 'Standard Plan Payment',
-                            planType: 'Standard Plan',
-                            requestCode: 100, // 🛠️ Added request code
-                          );
+                          openCheckout(amount: "1", planType: "Standard Plan");
                         },
                       ),
                       if (isWide)
@@ -118,18 +228,10 @@ class _PremiumPlansSectionState extends State<PremiumPlansSection> with WidgetsB
                         title: "Premium Plan",
                         subtitle: "Premium plan for three months",
                         description: "Advanced stock trading analysis",
-                        price: "₹15000 / 3 months",
+                        price: "₹1 / 3 months",
                         buttonColor: Colors.deepPurple,
                         onPressed: () {
-                          launchUPI(
-                            context,
-                            payeeVPA: 'jaydarji1977@oksbi', // 🛠️ Fixed VPA
-                            payeeName: 'StockTrade',
-                            amount: '15000', // 🛠️ Realistic amount
-                            transactionNote: 'Premium Plan Payment',
-                            planType: 'Premium Plan',
-                            requestCode: 101, // 🛠️ Unique request code
-                          );
+                          openCheckout(amount: "1", planType: "Premium Plan");
                         },
                       ),
                     ],

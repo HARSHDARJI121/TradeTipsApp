@@ -11,12 +11,31 @@ import 'about_section.dart';
 import 'portfolio_management_section.dart';
 import 'premium_plans_section.dart';
 import 'contact_section.dart';
+import 'profile_page.dart';
 
 import 'package:flutter/material.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 
-class DashboardPage extends StatelessWidget {
+class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
+
+  @override
+  State<DashboardPage> createState() => _DashboardPageState();
+}
+
+class _DashboardPageState extends State<DashboardPage> {
+  int _selectedIndex = 0;
+
+  final List<Widget> _pages = [
+    const _HomeContent(),
+    const ProfilePage(),
+  ];
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -191,187 +210,206 @@ class DashboardPage extends StatelessWidget {
       ),
 
       // ✅ Main Body
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const ImageCarousel(),
+      body: _pages[_selectedIndex],
 
-            const SizedBox(height: 16),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
-                      Icon(Icons.article, color: Colors.deepPurple),
-                      SizedBox(width: 8),
-                      Text(
-                        'Latest News',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 22,
-                          color: Colors.deepPurple,
-                        ),
+      // Bottom Navigation Bar
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+        ],
+      ),
+    );
+  }
+}
+
+// Move your dashboard body code into a separate widget for clarity
+class _HomeContent extends StatelessWidget {
+  const _HomeContent({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const ImageCarousel(),
+
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.article, color: Colors.deepPurple),
+                    SizedBox(width: 8),
+                    Text(
+                      'Latest News',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 22,
+                        color: Colors.deepPurple,
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Stock Trade',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey,
-                      letterSpacing: 1,
                     ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Stock Trade',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey,
+                    letterSpacing: 1,
                   ),
-                  const SizedBox(height: 12),
+                ),
+                const SizedBox(height: 12),
 
-                  StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('news')
-                        .orderBy('timestamp', descending: true)
-                        .limit(10)
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      if (snapshot.hasError) {
-                        return const Center(child: Text('Error loading news.'));
-                      }
-                      if (!snapshot.hasData) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
+                StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('news')
+                      .orderBy('timestamp', descending: true)
+                      .limit(10)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return const Center(child: Text('Error loading news.'));
+                    }
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
 
-                      final newsDocs = snapshot.data!.docs;
-                      if (newsDocs.isEmpty) {
-                        return const Center(child: Text('No news yet.'));
-                      }
+                    final newsDocs = snapshot.data!.docs;
+                    if (newsDocs.isEmpty) {
+                      return const Center(child: Text('No news yet.'));
+                    }
 
-                      return SizedBox(
-                        height: 180,
-                        child: PageView.builder(
-                          itemCount: newsDocs.length,
-                          controller: PageController(viewportFraction: 0.95),
-                          scrollDirection: Axis.horizontal,
-                          itemBuilder: (context, index) {
-                            final news = newsDocs[index];
-                            DateTime? dateTime;
-                            if (news['timestamp'] != null) {
-                              final ts = news['timestamp'];
-                              if (ts is Timestamp) {
-                                dateTime = ts.toDate();
-                              } else if (ts is DateTime) {
-                                dateTime = ts;
-                              }
+                    return SizedBox(
+                      height: 180,
+                      child: PageView.builder(
+                        itemCount: newsDocs.length,
+                        controller: PageController(viewportFraction: 0.95),
+                        scrollDirection: Axis.horizontal,
+                        itemBuilder: (context, index) {
+                          final news = newsDocs[index];
+                          DateTime? dateTime;
+                          if (news['timestamp'] != null) {
+                            final ts = news['timestamp'];
+                            if (ts is Timestamp) {
+                              dateTime = ts.toDate();
+                            } else if (ts is DateTime) {
+                              dateTime = ts;
                             }
-                            String dateStr = dateTime != null
-                                ? '${dateTime.day.toString().padLeft(2, '0')} '
-                                      '${_monthName(dateTime.month)} '
-                                      '${dateTime.year}'
-                                : '';
+                          }
+                          String dateStr = dateTime != null
+                              ? '${dateTime.day.toString().padLeft(2, '0')} '
+                                    '${_monthName(dateTime.month)} '
+                                    '${dateTime.year}'
+                              : '';
 
-                            return Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 4),
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    Colors.deepPurple.shade700,
-                                    const Color.fromARGB(255, 125, 221, 83),
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                borderRadius: BorderRadius.circular(20),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.3),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 4),
-                                  ),
+                          return Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.deepPurple.shade700,
+                                  const Color.fromARGB(255, 125, 221, 83),
                                 ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
                               ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    dateStr,
-                                    style: const TextStyle(
-                                      color: Color.fromARGB(179, 242, 238, 238),
-                                      fontSize: 12,
-                                    ),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  dateStr,
+                                  style: const TextStyle(
+                                    color: Color.fromARGB(179, 242, 238, 238),
+                                    fontSize: 12,
                                   ),
-                                  const SizedBox(height: 8),
+                                ),
+                                const SizedBox(height: 8),
 
-                                  // Title with dynamic size
-                                  AutoSizeText(
-                                    news['title'] ?? '',
+                                // Title with dynamic size
+                                AutoSizeText(
+                                  news['title'] ?? '',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  maxLines: 2,
+                                  minFontSize: 14,
+                                  maxFontSize: 22,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 8),
+
+                                // Content with dynamic size
+                                Expanded(
+                                  child: AutoSizeText(
+                                    news['content'] ?? '',
                                     style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white70,
                                     ),
-                                    maxLines: 2,
-                                    minFontSize: 14,
-                                    maxFontSize: 22,
+                                    maxLines: 6,
+                                    minFontSize: 10,
+                                    maxFontSize: 18,
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                  const SizedBox(height: 8),
-
-                                  // Content with dynamic size
-                                  Expanded(
-                                    child: AutoSizeText(
-                                      news['content'] ?? '',
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                      ),
-                                      maxLines: 6,
-                                      minFontSize: 10,
-                                      maxFontSize: 18,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-
-                          },
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => NewsPage(isAdmin: false),
-                        ),
-                      );
-                    },
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.deepPurple),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                                ),
+                              ],
+                            )
+                          );
+                        },
                       ),
-                    ),
-                    child: const Text(
-                      'View All News',
-                      style: TextStyle(color: Colors.deepPurple),
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => NewsPage(isAdmin: false),
+                      ),
+                    );
+                  },
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.deepPurple),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  const SizedBox(height: 24),
-                ],
-              ),
+                  child: const Text(
+                    'View All News',
+                    style: TextStyle(color: Colors.deepPurple),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
             ),
+          ),
 
-            const AboutSection(),
-            const PortfolioManagementSection(),
-            const PremiumPlansSection(),
-            const ContactSection(),
-            const SizedBox(height: 24),
-          ],
-        ),
+          const AboutSection(),
+          const PortfolioManagementSection(),
+          const PremiumPlansSection(),
+          const ContactSection(),
+          const SizedBox(height: 24),
+        ],
       ),
     );
   }

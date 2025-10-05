@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class RequestListPage extends StatelessWidget {
   final String groupName;
@@ -102,11 +104,50 @@ class RequestListPage extends StatelessWidget {
       'status': 'approved',
       'approvedAt': DateTime.now(),
     });
+
+    await sendUserNotification(userId, 'Your group join request has been accepted!');
+  }
+
+  Future<void> sendUserNotification(String userId, String message) async {
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('notifications')
+        .add({
+      'message': message,
+      'timestamp': FieldValue.serverTimestamp(),
+      'read': false,
+    });
+  }
+
+  Future<void> saveUserToken() async {
+    final user = FirebaseAuth.instance.currentUser;
+    final token = await FirebaseMessaging.instance.getToken();
+    if (user != null && token != null) {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+        'fcmToken': token,
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final groupDocName = getGroupDocName(groupName);
+
+    FirebaseFirestore.instance
+        .collection('users')
+        .doc(FirebaseAuth.instance.currentUser!.uid)
+        .collection('notifications')
+        .where('read', isEqualTo: false)
+        .snapshots()
+        .listen((snapshot) {
+          for (var doc in snapshot.docs) {
+            final message = doc['message'];
+            // Show local notification here
+            // Mark as read
+            doc.reference.update({'read': true});
+          }
+        });
 
     return Scaffold(
       appBar: AppBar(title: Text(label), backgroundColor: color),

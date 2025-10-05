@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../authication/helpers/chat_service.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:io';
 
 class MessagesPage extends StatefulWidget {
   const MessagesPage({super.key});
@@ -141,13 +144,8 @@ class _MessagesPageState extends State<MessagesPage> {
                     borderRadius: BorderRadius.circular(28),
                     onTap: () async {
                       final groupName = group['name'] as String;
-                      final type = groupName == 'StockTrade'
-                          ? 'normal'
-                          : groupName == 'StockTrade Premium'
-                          ? 'premium'
-                          : groupName == 'StockTrade Future'
-                          ? 'futurepremium'
-                          : 'admin';
+                      final isMember = await isUserMember(groupName);
+
                       if (isMember) {
                         Navigator.push(
                           context,
@@ -160,14 +158,20 @@ class _MessagesPageState extends State<MessagesPage> {
                           ),
                         );
                       } else {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => JoinGroupPage(
-                              groupName: groupName,
-                              groupColor: group['color'] as Color,
-                              type: type,
+                        // Show locked message dialog
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: Text('Access Locked'),
+                            content: Text(
+                              'This group is locked. Please purchase the required plan and wait for admin approval to unlock.',
                             ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('OK'),
+                              ),
+                            ],
                           ),
                         );
                       }
@@ -384,7 +388,7 @@ class _GroupChatPageState extends State<GroupChatPage> {
         await FirebaseFirestore.instance
             .collection('groups')
             .doc(groupId)
-            .collection('messages') 
+            .collection('messages')
             .add(messageData);
       }
     } catch (e) {
@@ -895,15 +899,77 @@ class _ChatInputBar extends StatefulWidget {
 
 class _ChatInputBarState extends State<_ChatInputBar> {
   bool _hoverSend = false;
+  final ImagePicker _picker = ImagePicker();
 
   void _handleSend(String text) {
     if (text.trim().isEmpty) return;
     widget.onSend(text);
-    widget.controller.clear(); // Clear input after sending
+    widget.controller.clear();
+  }
+
+  // Function to pick and upload an image
+  Future<void> _pickImage() async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+      );
+
+      if (pickedFile == null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('No image selected')));
+        return;
+      }
+
+      // Verify file exists
+      final file = File(pickedFile.path);
+      if (!await file.exists()) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Selected image file not found')),
+        );
+        return;
+      }
+
+      // Upload to Firebase Storage
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final ref = FirebaseStorage.instance.ref().child('chat_images/$fileName');
+
+      // Start upload and monitor state
+      final uploadTask = ref.putFile(file);
+      final snapshot = await uploadTask.whenComplete(() => null);
+
+      // Check upload state
+      if (snapshot.state == TaskState.success) {
+        final downloadUrl = await ref.getDownloadURL();
+        widget.onSendImage(downloadUrl);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Image uploaded successfully')));
+      } else {
+        throw Exception('Upload failed: ${snapshot.state}');
+      }
+    } catch (e) {
+      print('Error picking/uploading image: $e');
+      String errorMessage = 'Failed to pick/upload image';
+      if (e is FirebaseException) {
+        if (e.code == 'object-not-found') {
+          errorMessage = 'Image not found in Firebase Storage';
+        } else if (e.code == 'unauthorized') {
+          errorMessage = 'Permission denied. Please sign in.';
+        } else {
+          errorMessage = 'Firebase error: ${e.message}';
+        }
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(errorMessage)));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Your existing build method remains unchanged
     return Container(
       margin: const EdgeInsets.fromLTRB(0, 0, 0, 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -926,9 +992,7 @@ class _ChatInputBarState extends State<_ChatInputBar> {
       child: Row(
         children: [
           GestureDetector(
-            onTap: () => widget.onSendImage(
-              'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=400&q=80',
-            ),
+            onTap: _pickImage,
             child: Container(
               decoration: BoxDecoration(
                 color: widget.groupColor.withOpacity(0.12),

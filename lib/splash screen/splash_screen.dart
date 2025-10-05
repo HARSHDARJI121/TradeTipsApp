@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -28,16 +30,55 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
     _fadeController.forward();
 
+    // Begin navigation after splash and token check
     _navigateToNextScreen();
   }
 
   Future<void> _navigateToNextScreen() async {
-    await Future.delayed(const Duration(seconds: 3));
+    await Future.delayed(const Duration(seconds: 3)); // Show splash animation
+
     final user = FirebaseAuth.instance.currentUser;
 
     if (user != null) {
-      Navigator.of(context).pushReplacementNamed('/dashboard');
+      final token = await FirebaseMessaging.instance.getToken();
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      final savedToken = doc.data()?['deviceToken'];
+
+      if (savedToken != null && savedToken != token) {
+        await FirebaseAuth.instance.signOut();
+        if (!mounted) return;
+
+        // Show logout dialog and navigate to login
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => AlertDialog(
+            title: const Text('Logged out'),
+            content: const Text('Your account was logged in on another device.'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop(); // Close dialog
+                  Navigator.of(context).pushReplacementNamed('/login');
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
+      // Token matches or not set — proceed to dashboard
+      if (mounted) {
+        Navigator.of(context).pushReplacementNamed('/dashboard');
+      }
     } else {
+      // User not logged in
       Navigator.of(context).pushReplacementNamed('/login');
     }
   }

@@ -1,6 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -40,21 +42,30 @@ class AuthService {
 
   /// Email/Password Sign-In
   Future<User?> signInWithEmail(String email, String password) async {
-    try {
-      final userCredential = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      return userCredential.user;
-    } catch (e) {
-      print('Email sign-in error: $e');
-      return null;
+    final result = await _auth.signInWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+    final user = result.user;
+    if (user != null) {
+      await saveDeviceTokenOnLogin(user);
     }
+    return user;
+  }
+
+  Future<void> saveDeviceTokenOnLogin(User user) async {
+    final token = await FirebaseMessaging.instance.getToken();
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+      'deviceToken': token,
+    }, SetOptions(merge: true));
   }
 
   /// Email/Password Registration
   Future<User?> registerWithEmail(
-      String email, String password, String name) async {
+    String email,
+    String password,
+    String name,
+  ) async {
     try {
       final userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
@@ -94,4 +105,30 @@ class AuthService {
     }
     await _auth.signOut();
   }
+
+  /// Check Device Token
+  // Future<void> checkDeviceToken(User user, BuildContext context) async {
+  //   final token = await FirebaseMessaging.instance.getToken();
+  //   final doc = await FirebaseFirestore.instance
+  //       .collection('users')
+  //       .doc(user.uid)
+  //       .get();
+  //   final savedToken = doc.data()?['deviceToken'];
+  //   if (savedToken != null && savedToken != token) {
+  //     await FirebaseAuth.instance.signOut();
+  //     showDialog(
+  //       context: context,
+  //       builder: (_) => AlertDialog(
+  //         title: Text('Logged out'),
+  //         content: Text('Your account was logged in on another device.'),
+  //         actions: [
+  //           TextButton(
+  //             onPressed: () => Navigator.pop(context),
+  //             child: Text('OK'),
+  //           ),
+  //         ],
+  //       ),
+  //     );
+  //   }
+  // }
 }
